@@ -10,29 +10,45 @@ import java.util.Calendar
 
 @Serializable
 class Term(
-    @SerialName("term_id") private val termId: Int? = null,
-    private val type: String? = null,
     val title: String,
-    private val slug: String? = null,
-    private val count: Int? = null,
 )
+
+@Serializable
+class TagSearchResponse(
+    val result: List<TagSearchHit> = emptyList(),
+)
+
+@Serializable
+class TagSearchHit(val id: Int)
 
 @Serializable
 class Manga(
     val hid: String,
     private val title: String,
-    @SerialName("alt_titles") private val altTitles: List<String> = emptyList(),
+    private val altTitles: List<String> = emptyList(),
+    @SerialName("alt_titles") private val altTitlesOld: List<String> = emptyList(),
     private val synopsis: String? = null,
     private val type: String = "",
     private val poster: Poster? = null,
     private val status: String = "",
     private val contentRating: String = "safe",
-    private val author: List<Term>? = null,
-    private val artist: List<Term>? = null,
-    private val genre: List<Term>? = null,
-    private val theme: List<Term>? = null,
-    private val demographic: List<Term>? = null,
+    private val authors: List<Term>? = null,
+    @SerialName("author") private val authorOld: List<Term>? = null,
+    private val artists: List<Term>? = null,
+    @SerialName("artist") private val artistOld: List<Term>? = null,
+    private val genres: List<Term>? = null,
+    @SerialName("genre") private val genreOld: List<Term>? = null,
+    private val tags: List<Term>? = null,
+    @SerialName("theme") private val themeOld: List<Term>? = null,
+    private val demographics: List<Term>? = null,
+    @SerialName("demographic") private val demographicOld: List<Term>? = null,
+    private val formats: List<Term>? = null,
     private val ratedAvg: Double = 0.0,
+    private val ratedCount: Long = 0L,
+    private val followsTotal: Long = 0L,
+    private val rank: Int = 0,
+    private val year: Int? = null,
+    private val originalLanguage: String? = null,
     private val url: String? = null,
 ) {
     @Serializable
@@ -73,11 +89,17 @@ class Manga(
         posterQuality: String?,
         altTitlesInDesc: Boolean = false,
         scorePosition: String,
+        showExtraInfo: Boolean = true,
+        showTags: Boolean = false,
     ) = SManga.create().apply {
         url = this@Manga.url?.substringAfter("/title") ?: "/$hid"
         title = this@Manga.title
-        author = this@Manga.author?.joinToString { it.title }
-        artist = this@Manga.artist?.joinToString { it.title }
+
+        val actualAuthors = authors ?: authorOld
+        val actualArtists = artists ?: artistOld
+
+        author = actualAuthors?.joinToString { it.title }
+        artist = actualArtists?.joinToString { it.title }
         description = buildString {
             if (scorePosition == "top") {
                 fancyScore.takeIf { it.isNotEmpty() }?.let {
@@ -88,10 +110,19 @@ class Manga(
 
             synopsis?.takeUnless { it.isEmpty() }?.let { append(it) }
 
-            if (altTitlesInDesc && altTitles.isNotEmpty()) {
+            val actualAltTitles = altTitles.ifEmpty { altTitlesOld }
+            if (altTitlesInDesc && actualAltTitles.isNotEmpty()) {
                 append("\n\n")
                 append("Alternative Names:\n")
-                append(altTitles.joinToString("\n"))
+                append(actualAltTitles.joinToString("\n"))
+            }
+
+            if (showExtraInfo) {
+                val extras = buildExtraInfo()
+                if (extras.isNotEmpty()) {
+                    if (isNotEmpty()) append("\n\n")
+                    append(extras.joinToString("\n"))
+                }
             }
 
             if (scorePosition == "bottom") {
@@ -110,7 +141,7 @@ class Manga(
             else -> SManga.UNKNOWN
         }
         thumbnail_url = this@Manga.poster?.from(posterQuality)
-        genre = getGenres()
+        genre = getGenres(showTags)
     }
 
     fun toBasicSManga(posterQuality: String?) = SManga.create().apply {
@@ -119,16 +150,33 @@ class Manga(
         thumbnail_url = this@Manga.poster?.from(posterQuality)
     }
 
-    private fun getGenres() = buildList {
+    private fun buildExtraInfo(): List<String> = buildList {
+        year?.takeIf { it > 0 }?.let { add("Year: $it") }
+        originalLanguage?.takeIf { it.isNotBlank() }?.let { add("Language: ${it.uppercase()}") }
+        contentRating.takeIf { it.isNotBlank() }?.let {
+            add("Content rating: ${it.replaceFirstChar(Char::uppercase)}")
+        }
+        rank.takeIf { it > 0 }?.let { add("Rank: #$it") }
+        ratedCount.takeIf { it > 0 }?.let { add("Rated by: $it") }
+        followsTotal.takeIf { it > 0 }?.let { add("Followed by: $it") }
+    }
+
+    // The site has separate `genres`, `tags`, `formats`, and `demographics`
+    // groupings but only the curated `genres` (plus the type and demographics)
+    // belong in Mihon's "genre" chips by default — the `tags` list is dozens
+    // of narrative descriptors and the site doesn't surface them in its own
+    // detail layout. Users who want them back can flip the
+    // "Show tags in genre chips" preference.
+    private fun getGenres(showTags: Boolean) = buildList {
         when (type) {
             "manhwa" -> add("Manhwa")
             "manhua" -> add("Manhua")
             "manga" -> add("Manga")
             else -> add("Other")
         }
-        genre?.map { it.title }?.let { addAll(it) }
-        theme?.map { it.title }?.let { addAll(it) }
-        demographic?.map { it.title }?.let { addAll(it) }
+        (genres ?: genreOld)?.map { it.title }?.let { addAll(it) }
+        (demographics ?: demographicOld)?.map { it.title }?.let { addAll(it) }
+        if (showTags) tags?.map { it.title }?.let { addAll(it) }
         if (contentRating == "erotica" || contentRating == "pornographic") add("NSFW")
     }.distinct().joinToString()
 }
@@ -141,15 +189,21 @@ class SingleMangaResponse(
 @Serializable
 class Meta(
     val page: Int = 1,
-    val lastPage: Int = 1,
+    private val lastPage: Int = 1,
+    @SerialName("last_page") private val lastPageOld: Int = 1,
     val hasNext: Boolean = false,
-)
+) {
+    val actualLastPage: Int get() = maxOf(lastPage, lastPageOld)
+}
 
 @Serializable
 class Pagination(
     val page: Int = 1,
-    @SerialName("last_page") val lastPage: Int = 1,
-)
+    private val lastPage: Int = 1,
+    @SerialName("last_page") private val lastPageOld: Int = 1,
+) {
+    val actualLastPage: Int get() = maxOf(lastPage, lastPageOld)
+}
 
 @Serializable
 class SearchResponse(
@@ -158,12 +212,12 @@ class SearchResponse(
     @Serializable
     class Items(
         val items: List<Manga> = emptyList(),
-        val meta: Meta? = null,
-        val pagination: Pagination? = null,
+        private val meta: Meta? = null,
+        private val pagination: Pagination? = null,
     ) {
         fun hasNextPage(): Boolean = when {
-            meta != null -> meta.page < meta.lastPage
-            pagination != null -> pagination.page < pagination.lastPage
+            meta != null -> meta.page < meta.actualLastPage
+            pagination != null -> pagination.page < pagination.actualLastPage
             else -> false
         }
     }
@@ -176,12 +230,12 @@ class ChapterDetailsResponse(
     @Serializable
     class Items(
         val items: List<Chapter> = emptyList(),
-        val meta: Meta? = null,
-        val pagination: Pagination? = null,
+        private val meta: Meta? = null,
+        private val pagination: Pagination? = null,
     ) {
         fun hasNextPage(): Boolean = when {
-            meta != null -> meta.page < meta.lastPage
-            pagination != null -> pagination.page < pagination.lastPage
+            meta != null -> meta.page < meta.actualLastPage
+            pagination != null -> pagination.page < pagination.actualLastPage
             else -> false
         }
     }
@@ -190,6 +244,7 @@ class ChapterDetailsResponse(
 @Serializable
 class Chapter(
     val id: Int,
+    val url: String = "",
     val number: Double,
     private val name: String = "",
     val votes: Int = 0,
@@ -203,8 +258,18 @@ class Chapter(
         val name: String,
     )
 
+    companion object {
+        private val DATE_REGEX = Regex("""^(\d+)\s*(s|m|h|d|w|mo|mos|y|yr|yrs|min|mins|sec|secs|hr|hrs|day|days|week|weeks|month|months|year|years)$""")
+    }
+
     fun toSChapter(mangaSlug: String) = SChapter.create().apply {
-        url = "title/$mangaSlug/$id-chapter-${number.toString().removeSuffix(".0")}"
+        url = this@Chapter.url.indexOf("/title/").let { index ->
+            if (index != -1) {
+                this@Chapter.url.substring(index + 1)
+            } else {
+                "title/$mangaSlug/$id-chapter-${number.toString().removeSuffix(".0")}"
+            }
+        }
         name = buildString {
             append("Chapter ")
             append(this@Chapter.number.toString().removeSuffix(".0"))
@@ -224,8 +289,7 @@ class Chapter(
     private fun parseRelativeDate(dateStr: String): Long {
         if (dateStr.isEmpty()) return 0L
         val trimmed = dateStr.trim().lowercase().removeSuffix(" ago")
-        val match = Regex("""^(\d+)\s*(s|m|h|d|w|mo|mos|y|yr|yrs|min|mins|sec|secs|hr|hrs|day|days|week|weeks|month|months|year|years)$""").find(trimmed)
-            ?: return 0L
+        val match = DATE_REGEX.find(trimmed) ?: return 0L
 
         val amount = match.groupValues[1].toIntOrNull() ?: return 0L
         val unit = match.groupValues[2]
@@ -246,16 +310,22 @@ class Chapter(
 
 @Serializable
 class ChapterResponse(
-    val result: ChapterResult? = null,
+    val result: ChapterResult,
 ) {
     @Serializable
     class ChapterResult(
-        val id: Int,
-        val pages: List<PageDto> = emptyList(),
+        val pages: Pages,
+    )
+
+    @Serializable
+    class Pages(
+        val baseUrl: String,
+        val items: List<PageDto>,
     )
 
     @Serializable
     class PageDto(
         val url: String,
+        val s: Int = 0,
     )
 }

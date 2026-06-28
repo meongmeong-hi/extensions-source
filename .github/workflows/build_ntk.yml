@@ -19,16 +19,14 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      # AGP 9.0+ 규칙에 맞춰 충돌을 일으키는 옛날 코드를 자동 치료하고 빌드 뼈대를 생성합니다.
+      # 중복 저장소 에러를 제거한 가장 깔끔한 공통 설정을 만듭니다.
       - name: Fix Build Files and Create common.gradle
         run: |
-          # 1. NTK 자체 설정 파일에서 시스템이 거부하는 옛날 플러그인 라인을 자동 삭제합니다.
           if [ -f src/ko/ntk/build.gradle ]; then
             sed -i '/kotlin-android/d' src/ko/ntk/build.gradle
             sed -i '/org.jetbrains.kotlin.android/d' src/ko/ntk/build.gradle
           fi
 
-          # 2. 충돌 원인이 완벽히 차단된 청정 공통 설정을 주입합니다.
           cat << 'EOF' > common.gradle
           apply plugin: 'com.android.application'
           apply plugin: 'kotlinx-serialization'
@@ -43,11 +41,6 @@ jobs:
                   sourceCompatibility JavaVersion.VERSION_17
                   targetCompatibility JavaVersion.VERSION_17
               }
-          }
-
-          repositories {
-              google()
-              mavenCentral()
           }
           EOF
 

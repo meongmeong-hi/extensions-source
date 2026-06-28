@@ -125,10 +125,13 @@ class NTKNovel : NTKBase("NTK Novel", "novel") {
             document.selectFirst(".hero-v2-author a, .author, .writer")?.text()?.takeIf { it.isNotBlank() }?.let { author = it }
             document.selectFirst(".hero-v2-desc, .desc, .summary, .content")?.text()?.takeIf { it.isNotBlank() }?.let { description = it }
             document.selectFirst(".hero-v2-thumb img, .thumb img, .cover img")?.attr("abs:src")?.takeIf { it.isNotBlank() }?.let { thumbnail_url = it }
-            
+
             val statText = document.select(".pill-status, .status, .state").text()
-            if (statText.contains("연재")) status = SManga.ONGOING
-            else if (statText.contains("완결")) status = SManga.COMPLETED
+            if (statText.contains("연재")) {
+                status = SManga.ONGOING
+            } else if (statText.contains("완결")) {
+                status = SManga.COMPLETED
+            }
         }
     }
 
@@ -138,25 +141,27 @@ class NTKNovel : NTKBase("NTK Novel", "novel") {
 
         // 1. 소설 게시판에서 자주 쓰이는 회차 목록 디자인을 광범위하게 수집합니다.
         val rows = document.select("li.ep-row-v2, li.list-item, div.ep-row, div.list-item, tr.list-item, li.novel-item")
-        
+
         for (row in rows) {
             val a = row.selectFirst("a[href]") ?: continue
             val href = a.attr("href")
-            
+
             // 페이지 이동 버튼이나 잡다한 링크는 제외
             if (href.isBlank() || href.contains("?page=") || href.contains("/author/") || href.contains("/tag/")) continue
-            
+
             val titleElem = row.selectFirst("strong, .title, .item-title, .ep-row-v2-title")
             val title = (titleElem?.text() ?: a.text()).trim()
             if (title.isBlank()) continue
 
-            chapters.add(SChapter.create().apply {
-                setUrlWithoutDomain(href)
-                name = title
-                if (row.select("i.fa-lock, img[src*=lock], .badge:contains(P)").isNotEmpty()) {
-                    scanlator = "🔒" // 잠긴 화 표시
-                }
-            })
+            chapters.add(
+                SChapter.create().apply {
+                    setUrlWithoutDomain(href)
+                    name = title
+                    if (row.select("i.fa-lock, img[src*=lock], .badge:contains(P)").isNotEmpty()) {
+                        scanlator = "🔒" // 잠긴 화 표시
+                    }
+                },
+            )
         }
 
         if (chapters.isNotEmpty()) return chapters.distinctBy { it.url }.reversed()
@@ -168,10 +173,12 @@ class NTKNovel : NTKBase("NTK Novel", "novel") {
             if (href.matches(Regex(".*(/novel/viewer/\\d+|/novel/ep/\\d+|/novel/\\d+/\\d+|/novel/\\d+\\?book_def).*"))) {
                 val title = a.text().trim()
                 if (title.isNotBlank() && !title.contains("다음화") && !title.contains("이전화") && !title.contains("목록")) {
-                    chapters.add(SChapter.create().apply {
-                        setUrlWithoutDomain(href)
-                        name = title
-                    })
+                    chapters.add(
+                        SChapter.create().apply {
+                            setUrlWithoutDomain(href)
+                            name = title
+                        },
+                    )
                 }
             }
         }

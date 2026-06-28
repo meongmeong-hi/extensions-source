@@ -17,7 +17,7 @@ class NTKNovel : NTKBase("NTK Novel", "novel") {
     @Serializable
     private data class SafeWorksResponse(
         val works: List<SafeWork> = emptyList(),
-        val hasMore: Boolean = false
+        val hasMore: Boolean = false,
     )
 
     @Serializable
@@ -33,7 +33,10 @@ class NTKNovel : NTKBase("NTK Novel", "novel") {
         val author: String? = null,
     )
 
-    private val safeJson = Json { ignoreUnknownKeys = true; isLenient = true }
+    private val safeJson = Json {
+        ignoreUnknownKeys = true
+        isLenient = true
+    }
 
     override fun popularMangaRequest(page: Int): Request {
         val url = "$rootUrl/api/novel-list".toHttpUrl().newBuilder().apply {
@@ -85,7 +88,7 @@ class NTKNovel : NTKBase("NTK Novel", "novel") {
             if (data.works.isEmpty() && !bodyString.contains("\"works\"")) {
                 throw Exception("API Error")
             }
-            
+
             val mangas = data.works.mapNotNull { work ->
                 val id = work.sourceWorkId ?: return@mapNotNull null
                 SManga.create().apply {

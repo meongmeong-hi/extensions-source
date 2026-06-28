@@ -14,8 +14,6 @@ import kotlinx.serialization.json.Json
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Request
 import okhttp3.Response
-import java.text.SimpleDateFormat
-import java.util.Locale
 
 class NTKNovel : NTKBase("NTK Novel", "novel") {
 
@@ -135,12 +133,11 @@ class NTKNovel : NTKBase("NTK Novel", "novel") {
         }
     }
 
-    // --- 1. 페이지 순회(페이징) 및 날짜 완벽 파싱 ---
     override fun chapterListParse(response: Response): List<SChapter> {
         val document = response.asJsoup()
         val chapters = mutableListOf<SChapter>()
         val baseUrl = response.request.url.toString().substringBefore("?")
-        val dateFormat = SimpleDateFormat("yy.MM.dd", Locale.KOREA)
+        val dateFormat = java.text.SimpleDateFormat("yy.MM.dd", java.util.Locale.KOREA)
 
         fun extractChapters(doc: org.jsoup.nodes.Document) {
             val rows = doc.select("li.ep-row-v2, li.list-item, div.ep-row, div.list-item, tr.list-item, li.novel-item")
@@ -162,24 +159,23 @@ class NTKNovel : NTKBase("NTK Novel", "novel") {
                             scanlator = "🔒"
                         }
 
-                        // 날짜 포맷 (22. 04. 16. 형태) 찾아내기
                         val dateText = row.selectFirst(".date, .time, .ep-row-v2-date, .text-right, span")?.text() ?: row.text()
                         val dateMatch = Regex("""(\d{2})\.\s?(\d{2})\.\s?(\d{2})""").find(dateText)
                         if (dateMatch != null) {
                             try {
                                 val (y, m, d) = dateMatch.destructured
                                 date_upload = dateFormat.parse("$y.$m.$d")?.time ?: 0L
-                            } catch (e: Exception) {}
+                            } catch (e: Exception) {
+                                // Ignore
+                            }
                         }
                     },
                 )
             }
         }
 
-        // 1페이지 추출
         extractChapters(document)
 
-        // 누락된 회차(2, 3페이지...) 끝까지 수집
         val maxPage = document.select(".pagination a[href*=?page=], .pg_wrap a[href*=?page=]")
             .mapNotNull { it.attr("href").substringAfter("?page=").substringBefore("&").toIntOrNull() }
             .maxOrNull() ?: 1
@@ -200,15 +196,14 @@ class NTKNovel : NTKBase("NTK Novel", "novel") {
         throw Exception("회차 목록이 숨겨져 있습니다. 우측 상단 WebView(지구본)를 열어주세요.")
     }
 
-    // --- 2. 무한 로딩(타임아웃) 제거 및 안내창 띄우기 ---
     override fun pageListRequest(chapter: SChapter): Request {
-        // 이미지를 기다리는 대기열 기능을 강제로 꺼서 30초 로딩 에러를 없앱니다.
+        // 30초 대기 없이 해당 회차 URL을 바로 요청하고 즉시 에러창으로 보냅니다.
         return GET(rootUrl + chapter.url, headers)
     }
 
     override fun pageListParse(response: Response): List<Page> {
-        // 소설 텍스트를 읽을 수 없음을 즉시 알립니다.
-        throw Exception("❗ 미혼(Mihon) 앱은 그림 전용이라 '소설 글자'를 화면에 띄울 수 없습니다.\n\n소설을 읽으시려면 화면 우측 상단의 [🌐지구본 모양 버튼(WebView)]을 눌러주세요!")
+        // 소설 텍스트를 읽을 수 없음을 즉시 알리며 지구본 버튼을 띄웁니다.
+        throw Exception("❗ 미혼 앱은 그림 전용입니다.\n우측 상단 🌐지구본 모양(WebView) 버튼을 누르면 해당 회차로 바로 이동합니다.")
     }
 
     override fun getFilterList() = FilterList(

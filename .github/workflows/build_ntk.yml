@@ -1,7 +1,7 @@
 name: Build NTK Only
 
 on:
-  workflow_dispatch: # 수동 실행 버튼 활성화
+  workflow_dispatch:
 
 jobs:
   build:
@@ -19,44 +19,31 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      # 1. 뼈대 설정 및 2. 필수 앱 서류(Manifest)를 실시간으로 위조(?)하여 꽂아 넣습니다.
-      - name: Fix Build Files and Create common.gradle
+      - name: Copy Working Setup from Another Extension
         run: |
-          if [ -f src/ko/ntk/build.gradle ]; then
-            sed -i '/kotlin-android/d' src/ko/ntk/build.gradle
-            sed -i '/org.jetbrains.kotlin.android/d' src/ko/ntk/build.gradle
+          # 1. 기존의 에러를 유발하던 낡은 설정 파일들을 전부 휴지통에 버립니다.
+          rm -f src/ko/ntk/build.gradle
+          rm -f common.gradle
+          rm -f src/ko/ntk/src/main/AndroidManifest.xml
+          
+          # 2. 저장소 내에서 완벽하게 빌드되고 있는 다른 한국어 확장팩의 설정 파일을 찾습니다.
+          TEMPLATE=$(find src/ko -mindepth 2 -maxdepth 2 -name "build.gradle.kts" | grep -v "ntk" | head -n 1)
+          if [ -z "$TEMPLATE" ]; then
+            TEMPLATE=$(find src -mindepth 3 -maxdepth 3 -name "build.gradle.kts" | grep -v "ntk" | head -n 1)
           fi
-
-          cat << 'EOF' > common.gradle
-          apply plugin: 'com.android.application'
-          apply plugin: 'kotlinx-serialization'
-
-          android {
-              namespace 'eu.kanade.tachiyomi.extension.ko.ntk'
-              compileSdk 34
-              defaultConfig {
-                  minSdk 21
-                  targetSdk 34
-              }
-              compileOptions {
-                  sourceCompatibility JavaVersion.VERSION_17
-                  targetCompatibility JavaVersion.VERSION_17
-              }
-          }
-          EOF
-
-          mkdir -p src/ko/ntk/src/main
-          cat << 'EOF' > src/ko/ntk/src/main/AndroidManifest.xml
-          <?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-              <application android:label="NTK">
-                  <meta-data android:name="tachiyomi.extension" android:value="true" />
-                  <meta-data android:name="tachiyomi.extension.class" android:value="eu.kanade.tachiyomi.extension.ko.ntk.NTKFactory" />
-                  <meta-data android:name="tachiyomi.extension.versionCode" android:value="1" />
-                  <meta-data android:name="tachiyomi.extension.versionName" android:value="1.0" />
-              </application>
-          </manifest>
-          EOF
+          echo "완벽하게 작동 중인 원본 파일: $TEMPLATE"
+          
+          # 3. NTK 폴더로 그대로 복사해옵니다. (이제 타치요미 필수 부품들이 모두 연결됩니다)
+          cp "$TEMPLATE" "src/ko/ntk/build.gradle.kts"
+          
+          # 4. 원본 파일의 이름표만 'NTK'로 싹 바꿔치기 합니다.
+          sed -i -E 's/(extName|name)\s*=\s*".*"/\1 = "NTK"/' src/ko/ntk/build.gradle.kts
+          sed -i -E 's/pkgNameSuffix\s*=\s*".*"/pkgNameSuffix = "ko.ntk"/' src/ko/ntk/build.gradle.kts
+          sed -i -E 's/(extClass|className)\s*=\s*".*"/\1 = ".NTKFactory"/' src/ko/ntk/build.gradle.kts
+          sed -i -E 's/(extVersionCode|versionCode)\s*=\s*[0-9]+/\1 = 1/' src/ko/ntk/build.gradle.kts
+          
+          echo "바꿔치기 완료된 NTK 전용 설정:"
+          cat src/ko/ntk/build.gradle.kts
 
       - name: Build NTK Debug APK
         run: ./gradlew :src:ko:ntk:assembleDebug

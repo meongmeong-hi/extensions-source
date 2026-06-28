@@ -19,7 +19,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      # 시스템이 요구하는 명찰(namespace)을 포함한 완벽한 뼈대를 생성합니다.
+      # 1. 뼈대 설정 및 2. 필수 앱 서류(Manifest)를 실시간으로 위조(?)하여 꽂아 넣습니다.
       - name: Fix Build Files and Create common.gradle
         run: |
           if [ -f src/ko/ntk/build.gradle ]; then
@@ -43,6 +43,19 @@ jobs:
                   targetCompatibility JavaVersion.VERSION_17
               }
           }
+          EOF
+
+          mkdir -p src/ko/ntk/src/main
+          cat << 'EOF' > src/ko/ntk/src/main/AndroidManifest.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <application android:label="NTK">
+                  <meta-data android:name="tachiyomi.extension" android:value="true" />
+                  <meta-data android:name="tachiyomi.extension.class" android:value="eu.kanade.tachiyomi.extension.ko.ntk.NTKFactory" />
+                  <meta-data android:name="tachiyomi.extension.versionCode" android:value="1" />
+                  <meta-data android:name="tachiyomi.extension.versionName" android:value="1.0" />
+              </application>
+          </manifest>
           EOF
 
       - name: Build NTK Debug APK

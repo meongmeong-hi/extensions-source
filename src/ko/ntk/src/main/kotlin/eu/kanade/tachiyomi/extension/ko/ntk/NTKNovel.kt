@@ -17,14 +17,14 @@ class NTKNovel : NTKBase("NTK Novel", "novel") {
     @Serializable
     private data class SafeWorksResponse(
         // 만화의 works 대신 소설 전용인 novels 상자로 받습니다!
-        val novels: List<SafeWork> = emptyList(), 
+        val novels: List<SafeWork> = emptyList(),
         val hasMore: Boolean = false,
     )
 
     @Serializable
     private data class SafeWork(
         // 소설 서버는 번호를 id라고 부릅니다!
-        val id: String? = null, 
+        val id: String? = null,
         val sourceWorkId: String? = null,
         val title: String? = null,
         val workTitle: String? = null,
@@ -85,7 +85,7 @@ class NTKNovel : NTKBase("NTK Novel", "novel") {
         val bodyString = response.body.string()
         return try {
             val data = safeJson.decodeFromString<SafeWorksResponse>(bodyString)
-            
+
             // 이제 novels 상자 안에서 데이터를 꺼내옵니다.
             val mangas = data.novels.mapNotNull { work ->
                 val id = work.id ?: work.sourceWorkId ?: return@mapNotNull null

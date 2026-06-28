@@ -19,31 +19,37 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      - name: Copy Working Setup from Another Extension
+      - name: Upgrade NTK to Modern Build System
         run: |
-          # 1. 기존의 에러를 유발하던 낡은 설정 파일들을 전부 휴지통에 버립니다.
+          # 1. 기존 파일에서 핵심 부품(dependencies)만 안전하게 빼둡니다.
+          sed -n '/dependencies {/,/}/p' src/ko/ntk/build.gradle > deps.txt || true
+          
+          # 2. 에러를 일으키던 옛날 방식의 파일들을 전부 폐기합니다.
           rm -f src/ko/ntk/build.gradle
           rm -f common.gradle
           rm -f src/ko/ntk/src/main/AndroidManifest.xml
           
-          # 2. 저장소 내에서 완벽하게 빌드되고 있는 다른 한국어 확장팩의 설정 파일을 찾습니다.
-          TEMPLATE=$(find src/ko -mindepth 2 -maxdepth 2 -name "build.gradle.kts" | grep -v "ntk" | head -n 1)
-          if [ -z "$TEMPLATE" ]; then
-            TEMPLATE=$(find src -mindepth 3 -maxdepth 3 -name "build.gradle.kts" | grep -v "ntk" | head -n 1)
+          # 3. 최신 공장 규칙에 맞는 깔끔한 새 설정 파일을 만듭니다.
+          cat << 'EOF' > src/ko/ntk/build.gradle
+          plugins {
+              id 'tachiyomi.extension'
+          }
+
+          tachiyomi {
+              extName = 'NTK'
+              pkgNameSuffix = 'ko.ntk'
+              extClass = '.NTKFactory'
+              extVersionCode = 1
+              isNsfw = false
+          }
+          EOF
+          
+          # 4. 아까 빼둔 핵심 부품들을 새 파일에 조립합니다.
+          if [ -s deps.txt ]; then
+            cat deps.txt >> src/ko/ntk/build.gradle
           fi
-          echo "완벽하게 작동 중인 원본 파일: $TEMPLATE"
           
-          # 3. NTK 폴더로 그대로 복사해옵니다. (이제 타치요미 필수 부품들이 모두 연결됩니다)
-          cp "$TEMPLATE" "src/ko/ntk/build.gradle.kts"
-          
-          # 4. 원본 파일의 이름표만 'NTK'로 싹 바꿔치기 합니다.
-          sed -i -E 's/(extName|name)\s*=\s*".*"/\1 = "NTK"/' src/ko/ntk/build.gradle.kts
-          sed -i -E 's/pkgNameSuffix\s*=\s*".*"/pkgNameSuffix = "ko.ntk"/' src/ko/ntk/build.gradle.kts
-          sed -i -E 's/(extClass|className)\s*=\s*".*"/\1 = ".NTKFactory"/' src/ko/ntk/build.gradle.kts
-          sed -i -E 's/(extVersionCode|versionCode)\s*=\s*[0-9]+/\1 = 1/' src/ko/ntk/build.gradle.kts
-          
-          echo "바꿔치기 완료된 NTK 전용 설정:"
-          cat src/ko/ntk/build.gradle.kts
+          echo "✅ 최신 시스템 업그레이드 완료"
 
       - name: Build NTK Debug APK
         run: ./gradlew :src:ko:ntk:assembleDebug

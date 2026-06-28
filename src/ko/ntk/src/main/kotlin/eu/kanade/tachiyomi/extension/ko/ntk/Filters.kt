@@ -98,7 +98,7 @@ class NvStatusFilter : Filter.Select<String>("상태", statusList.map { it.name 
 class NvGenreFilter : Filter.Group<GenreTriState>("장르", nvGenreList.map { GenreTriState(it) })
 
 internal val nvGenreList = listOf(
-    "판타지", "무협", "19금", "현대", "로맨스", "로맨스 판타지", "BL", "라노벨", "기타"
+    "판타지", "무협", "19금", "현대", "로맨스", "로맨스 판타지", "BL", "라노벨", "기타",
 )
 
 fun buildNvGenreParam(genreFilter: NvGenreFilter?): String? {

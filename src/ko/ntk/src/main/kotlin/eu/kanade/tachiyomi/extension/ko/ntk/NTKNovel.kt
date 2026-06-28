@@ -207,13 +207,11 @@ class NTKNovel : NTKBase("NTK Novel", "novel") {
         throw Exception("회차 목록을 불러올 수 없습니다. WebView로 확인해주세요.")
     }
 
-    override fun pageListRequest(chapter: SChapter): Request {
-        return GET(rootUrl + chapter.url, headers)
-    }
+    // 짧은 줄 서식 적용 완료!
+    override fun pageListRequest(chapter: SChapter): Request = GET(rootUrl + chapter.url, headers)
 
-    override fun pageListParse(response: Response): List<Page> {
-        throw Exception("❗ 미혼 앱은 그림 전용입니다.\n우측 상단 🌐지구본 모양(WebView) 버튼을 누르면 해당 회차 글로 바로 연결됩니다!")
-    }
+    // 짧은 줄 서식 적용 완료!
+    override fun pageListParse(response: Response): List<Page> = throw Exception("❗ 미혼 앱은 그림 전용입니다.\n우측 상단 🌐지구본 모양(WebView) 버튼을 누르면 해당 회차 글로 바로 연결됩니다!")
 
     override fun getFilterList() = FilterList(
         NvSortFilter(),

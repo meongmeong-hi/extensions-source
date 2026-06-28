@@ -19,6 +19,11 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
+      # 검증된 공식 활성 저장소에서 누락된 빌드 필수 파일을 강제로 다운로드합니다.
+      - name: Fetch Missing common.gradle
+        run: |
+          curl -sL https://raw.githubusercontent.com/cuong-tran/keiyoushi-extensions/main/common.gradle -o common.gradle
+
       - name: Build NTK Debug APK
         run: ./gradlew :src:ko:ntk:assembleDebug
 

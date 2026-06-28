@@ -101,7 +101,7 @@ class NTKNovel : NTKBase("NTK Novel", "novel") {
         } catch (e: Exception) {
             val errorManga = SManga.create().apply {
                 url = "/novel/"
-                title = "❗오류 원인: " + bodyString.take(150)
+                title = "❗오류: " + bodyString.take(150)
                 thumbnail_url = ""
             }
             MangasPage(listOf(errorManga), false)
@@ -119,12 +119,12 @@ class NTKNovel : NTKBase("NTK Novel", "novel") {
     override fun mangaDetailsParse(response: Response): SManga {
         val document = response.asJsoup()
         return SManga.create().apply {
-            document.selectFirst("h1, .hero-v2-title, .novel-title, .title")?.text()?.takeIf { it.isNotBlank() }?.let { title = it }
-            document.selectFirst(".hero-v2-author a, .author, .writer")?.text()?.takeIf { it.isNotBlank() }?.let { author = it }
-            document.selectFirst(".hero-v2-desc, .desc, .summary, .content")?.text()?.takeIf { it.isNotBlank() }?.let { description = it }
-            document.selectFirst(".hero-v2-thumb img, .thumb img, .cover img")?.attr("abs:src")?.takeIf { it.isNotBlank() }?.let { thumbnail_url = it }
+            document.selectFirst(".view-wrap h1, .novel-title, span.title, h1.hero-v2-title")?.text()?.takeIf { it.isNotBlank() }?.let { title = it }
+            document.selectFirst(".view-wrap .text-muted, .author, .writer")?.text()?.replace("글/그림", "")?.takeIf { it.isNotBlank() }?.let { author = it.trim() }
+            document.selectFirst(".view-wrap .desc, .summary, .content")?.text()?.takeIf { it.isNotBlank() }?.let { description = it }
+            document.selectFirst(".view-wrap .view-img img, .cover img, .thumb img")?.attr("abs:src")?.takeIf { it.isNotBlank() }?.let { thumbnail_url = it }
 
-            val statText = document.select(".pill-status, .status, .state").text()
+            val statText = document.select(".view-wrap, .pill-status, .status, .state").text()
             if (statText.contains("연재")) {
                 status = SManga.ONGOING
             } else if (statText.contains("완결")) {
@@ -139,28 +139,32 @@ class NTKNovel : NTKBase("NTK Novel", "novel") {
         val baseUrl = response.request.url.toString().substringBefore("?")
         val dateFormat = java.text.SimpleDateFormat("yy.MM.dd", java.util.Locale.KOREA)
 
-        fun extractChapters(doc: org.jsoup.nodes.Document) {
-            val rows = doc.select("li.ep-row-v2, li.list-item, div.ep-row, div.list-item, tr.list-item, li.novel-item")
+        fun parsePage(doc: org.jsoup.nodes.Document) {
+            val rows = doc.select(".list-body .list-item, .ep-list-v2 .ep-row-v2")
             for (row in rows) {
                 val a = row.selectFirst("a[href]") ?: continue
                 val href = a.attr("href")
 
-                if (href.isBlank() || href.contains("?page=") || href.contains("/author/") || href.contains("/tag/")) continue
+                if (href.contains("?page=") || href.contains("bo_table=") || !href.contains("/novel/")) continue
 
-                val titleElem = row.selectFirst("strong, .title, .item-title, .ep-row-v2-title")
-                val title = (titleElem?.text() ?: a.text()).trim()
+                var title = a.ownText().trim()
+                if (title.isEmpty()) {
+                    title = a.text().trim()
+                }
+                title = title.replace("최신화부터", "").replace("1화부터 보기", "").replace("->", "").trim()
                 if (title.isBlank()) continue
 
                 chapters.add(
                     SChapter.create().apply {
                         setUrlWithoutDomain(href)
                         name = title
-                        if (row.select("i.fa-lock, img[src*=lock], .badge:contains(P)").isNotEmpty()) {
+
+                        if (row.select("i.fa-lock, img[src*=lock]").isNotEmpty()) {
                             scanlator = "🔒"
                         }
 
-                        val dateText = row.selectFirst(".date, .time, .ep-row-v2-date, .text-right, span")?.text() ?: row.text()
-                        val dateMatch = Regex("""(\d{2})\.\s?(\d{2})\.\s?(\d{2})""").find(dateText)
+                        val dateText = row.selectFirst(".wr-date, .date, .time")?.text() ?: ""
+                        val dateMatch = Regex("""(\d{2})\.\s*(\d{2})\.\s*(\d{2})""").find(dateText)
                         if (dateMatch != null) {
                             try {
                                 val (y, m, d) = dateMatch.destructured
@@ -174,17 +178,24 @@ class NTKNovel : NTKBase("NTK Novel", "novel") {
             }
         }
 
-        extractChapters(document)
+        parsePage(document)
 
-        val maxPage = document.select(".pagination a[href*=?page=], .pg_wrap a[href*=?page=]")
-            .mapNotNull { it.attr("href").substringAfter("?page=").substringBefore("&").toIntOrNull() }
-            .maxOrNull() ?: 1
+        var maxPage = 1
+        val pageLinks = document.select(".pagination a, .pg a")
+        for (a in pageLinks) {
+            val pMatch = Regex("""page=(\d+)""").find(a.attr("href"))
+            if (pMatch != null) {
+                val p = pMatch.groupValues[1].toInt()
+                if (p > maxPage) maxPage = p
+            }
+        }
 
         if (maxPage > 1) {
-            for (p in 2..maxPage) {
+            val limit = minOf(maxPage, 50)
+            for (p in 2..limit) {
                 try {
-                    val nextResp = client.newCall(GET("$baseUrl?page=$p", headers)).execute()
-                    extractChapters(nextResp.asJsoup())
+                    val nextDoc = client.newCall(GET("$baseUrl?page=$p", headers)).execute().asJsoup()
+                    parsePage(nextDoc)
                 } catch (e: Exception) {
                     break
                 }
@@ -193,17 +204,15 @@ class NTKNovel : NTKBase("NTK Novel", "novel") {
 
         if (chapters.isNotEmpty()) return chapters.distinctBy { it.url }.reversed()
 
-        throw Exception("회차 목록이 숨겨져 있습니다. 우측 상단 WebView(지구본)를 열어주세요.")
+        throw Exception("회차 목록을 불러올 수 없습니다. WebView로 확인해주세요.")
     }
 
     override fun pageListRequest(chapter: SChapter): Request {
-        // 30초 대기 없이 해당 회차 URL을 바로 요청하고 즉시 에러창으로 보냅니다.
         return GET(rootUrl + chapter.url, headers)
     }
 
     override fun pageListParse(response: Response): List<Page> {
-        // 소설 텍스트를 읽을 수 없음을 즉시 알리며 지구본 버튼을 띄웁니다.
-        throw Exception("❗ 미혼 앱은 그림 전용입니다.\n우측 상단 🌐지구본 모양(WebView) 버튼을 누르면 해당 회차로 바로 이동합니다.")
+        throw Exception("❗ 미혼 앱은 그림 전용입니다.\n우측 상단 🌐지구본 모양(WebView) 버튼을 누르면 해당 회차 글로 바로 연결됩니다!")
     }
 
     override fun getFilterList() = FilterList(

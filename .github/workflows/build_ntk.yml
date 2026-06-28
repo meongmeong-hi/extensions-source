@@ -59,22 +59,3 @@ jobs:
         with:
           name: ntk-plugin-apk
           path: "**/*.apk"
-                  sourceCompatibility JavaVersion.VERSION_17
-                  targetCompatibility JavaVersion.VERSION_17
-              }
-          }
-
-          repositories {
-              google()
-              mavenCentral()
-          }
-          EOF
-
-      - name: Build NTK Debug APK
-        run: ./gradlew :src:ko:ntk:assembleDebug
-
-      - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ntk-plugin-apk
-          path: "**/*.apk"

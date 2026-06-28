@@ -19,37 +19,43 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      - name: Upgrade NTK to Modern Build System
+      - name: Clone Native Working Config
         run: |
-          # 1. 기존 파일에서 핵심 부품(dependencies)만 안전하게 빼둡니다.
-          sed -n '/dependencies {/,/}/p' src/ko/ntk/build.gradle > deps.txt || true
-          
-          # 2. 에러를 일으키던 옛날 방식의 파일들을 전부 폐기합니다.
-          rm -f src/ko/ntk/build.gradle
-          rm -f common.gradle
-          rm -f src/ko/ntk/src/main/AndroidManifest.xml
-          
-          # 3. 최신 공장 규칙에 맞는 깔끔한 새 설정 파일을 만듭니다.
-          cat << 'EOF' > src/ko/ntk/build.gradle
-          plugins {
-              id 'tachiyomi.extension'
-          }
-
-          tachiyomi {
-              extName = 'NTK'
-              pkgNameSuffix = 'ko.ntk'
-              extClass = '.NTKFactory'
-              extVersionCode = 1
-              isNsfw = false
-          }
-          EOF
-          
-          # 4. 아까 빼둔 핵심 부품들을 새 파일에 조립합니다.
-          if [ -s deps.txt ]; then
-            cat deps.txt >> src/ko/ntk/build.gradle
+          # 1. 완벽히 성공했던 mundohentai의 설정 파일을 그대로 복사해옵니다.
+          if [ -f "src/pt/mundohentai/build.gradle" ]; then
+            TEMPLATE="src/pt/mundohentai/build.gradle"
+          elif [ -f "src/pt/mundohentai/build.gradle.kts" ]; then
+            TEMPLATE="src/pt/mundohentai/build.gradle.kts"
+          else
+            TEMPLATE=$(find src -mindepth 3 -maxdepth 3 -name "build.gradle*" | grep -v "ntk" | head -n 1)
           fi
           
-          echo "✅ 최신 시스템 업그레이드 완료"
+          EXT=${TEMPLATE#*build.}
+          TARGET="src/ko/ntk/build.$EXT"
+          
+          # 기존의 고장 난 파일은 날려버리고 정상 파일을 덮어씁니다.
+          rm -f src/ko/ntk/build.gradle*
+          cp "$TEMPLATE" "$TARGET"
+          
+          # 2. 내용물의 이름표를 정교하게 NTK로 위조(?)합니다.
+          sed -i -E "s/extName\s*=\s*['\"].*['\"]/extName = \"NTK\"/g" "$TARGET"
+          sed -i -E "s/pkgNameSuffix\s*=\s*['\"].*['\"]/pkgNameSuffix = \"ko.ntk\"/g" "$TARGET"
+          sed -i -E "s/extClass\s*=\s*['\"].*['\"]/extClass = \".NTKFactory\"/g" "$TARGET"
+          sed -i -E "s/extVersionCode\s*=\s*[0-9]+/extVersionCode = 1/g" "$TARGET"
+          
+          # 3. 필수 신분증(Manifest) 파일도 확실하게 챙겨 넣습니다.
+          mkdir -p src/ko/ntk/src/main
+          cat << 'EOF' > src/ko/ntk/src/main/AndroidManifest.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <application android:label="NTK">
+                  <meta-data android:name="tachiyomi.extension" android:value="true" />
+                  <meta-data android:name="tachiyomi.extension.class" android:value="eu.kanade.tachiyomi.extension.ko.ntk.NTKFactory" />
+                  <meta-data android:name="tachiyomi.extension.versionCode" android:value="1" />
+                  <meta-data android:name="tachiyomi.extension.versionName" android:value="1.0" />
+              </application>
+          </manifest>
+          EOF
 
       - name: Build NTK Debug APK
         run: ./gradlew :src:ko:ntk:assembleDebug

@@ -19,10 +19,31 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      # 검증된 공식 활성 저장소에서 누락된 빌드 필수 파일을 강제로 다운로드합니다.
-      - name: Fetch Missing common.gradle
+      # 오류를 뿜어내던 복잡한 최적화 코드를 전부 걷어내고, 빌드에 꼭 필요한 뼈대만 갖춘 설정을 실시간으로 만듭니다.
+      - name: Create Clean common.gradle
         run: |
-          curl -sL https://raw.githubusercontent.com/cuong-tran/keiyoushi-extensions/main/common.gradle -o common.gradle
+          cat << 'EOF' > common.gradle
+          apply plugin: 'com.android.application'
+          apply plugin: 'kotlin-android'
+          apply plugin: 'kotlinx-serialization'
+
+          android {
+              compileSdk 34
+              defaultConfig {
+                  minSdk 21
+                  targetSdk 34
+              }
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_17
+                  targetCompatibility JavaVersion.VERSION_17
+              }
+          }
+
+          repositories {
+              google()
+              mavenCentral()
+          }
+          EOF
 
       - name: Build NTK Debug APK
         run: ./gradlew :src:ko:ntk:assembleDebug

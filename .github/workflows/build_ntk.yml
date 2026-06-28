@@ -1,67 +1,116 @@
-name: Build NTK Only
+package eu.kanade.tachiyomi.extension.ko.ntk
 
-on:
-  workflow_dispatch:
+import eu.kanade.tachiyomi.source.model.Filter
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+data class FilterOption(val name: String, val value: String)
 
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
+internal val sortList = listOf(
+    FilterOption("최신순", "new"),
+    FilterOption("북마크순", "bookmark"),
+    FilterOption("조회순", "views"),
+)
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+class GenreTriState(val genre: String) : Filter.TriState(genre)
 
-      - name: Clone Native Working Config
-        run: |
-          # 1. 완벽히 성공했던 mundohentai의 설정 파일을 그대로 복사해옵니다.
-          if [ -f "src/pt/mundohentai/build.gradle" ]; then
-            TEMPLATE="src/pt/mundohentai/build.gradle"
-          elif [ -f "src/pt/mundohentai/build.gradle.kts" ]; then
-            TEMPLATE="src/pt/mundohentai/build.gradle.kts"
-          else
-            TEMPLATE=$(find src -mindepth 3 -maxdepth 3 -name "build.gradle*" | grep -v "ntk" | head -n 1)
-          fi
-          
-          EXT=${TEMPLATE#*build.}
-          TARGET="src/ko/ntk/build.$EXT"
-          
-          # 기존의 고장 난 파일은 날려버리고 정상 파일을 덮어씁니다.
-          rm -f src/ko/ntk/build.gradle*
-          cp "$TEMPLATE" "$TARGET"
-          
-          # 2. 내용물의 이름표를 정교하게 NTK로 위조(?)합니다.
-          sed -i -E "s/extName\s*=\s*['\"].*['\"]/extName = \"NTK\"/g" "$TARGET"
-          sed -i -E "s/pkgNameSuffix\s*=\s*['\"].*['\"]/pkgNameSuffix = \"ko.ntk\"/g" "$TARGET"
-          sed -i -E "s/extClass\s*=\s*['\"].*['\"]/extClass = \".NTKFactory\"/g" "$TARGET"
-          sed -i -E "s/extVersionCode\s*=\s*[0-9]+/extVersionCode = 1/g" "$TARGET"
-          
-          # 3. 필수 신분증(Manifest) 파일도 확실하게 챙겨 넣습니다.
-          mkdir -p src/ko/ntk/src/main
-          cat << 'EOF' > src/ko/ntk/src/main/AndroidManifest.xml
-          <?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-              <application android:label="NTK">
-                  <meta-data android:name="tachiyomi.extension" android:value="true" />
-                  <meta-data android:name="tachiyomi.extension.class" android:value="eu.kanade.tachiyomi.extension.ko.ntk.NTKFactory" />
-                  <meta-data android:name="tachiyomi.extension.versionCode" android:value="1" />
-                  <meta-data android:name="tachiyomi.extension.versionName" android:value="1.0" />
-              </application>
-          </manifest>
-          EOF
+// ================= 만화(Manga) 필터 =================
+class SortFilter : Filter.Select<String>("정렬", sortList.map { it.name }.toTypedArray())
+class StatusFilter : Filter.Select<String>("상태", statusList.map { it.name }.toTypedArray())
+class GenreFilter : Filter.Group<GenreTriState>("장르", genreList.map { GenreTriState(it) })
 
-      - name: Build NTK Debug APK
-        run: ./gradlew :src:ko:ntk:assembleDebug
+internal val statusList = listOf(
+    FilterOption("전체", ""),
+    FilterOption("완결", "-end"),
+)
 
-      - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ntk-plugin-apk
-          path: "**/*.apk"
+internal val genreList = listOf(
+    "순정", "판타지", "러브코미디", "드라마", "17", "학원", "라노벨", "개그", "액션", "백합", "SF",
+    "일상", "이세계", "스릴러", "애니화", "전생", "스포츠", "TS", "소년", "먹방", "붕탁", "게임",
+    "호러", "시대", "로맨스", "추리", "무협", "음악", "BL",
+)
+
+fun buildGenreParam(genreFilter: GenreFilter?): String? {
+    if (genreFilter == null) return null
+    val genres = genreFilter.state
+        .filterIsInstance<GenreTriState>()
+        .mapIndexedNotNull { index, triState ->
+            when (triState.state) {
+                Filter.TriState.STATE_INCLUDE -> genreList[index]
+                Filter.TriState.STATE_EXCLUDE -> "-${genreList[index]}"
+                else -> null
+            }
+        }
+    return if (genres.isNotEmpty()) genres.joinToString(",") else null
+}
+
+// ================= 웹툰(Webtoon) 필터 =================
+class WtSortFilter : Filter.Select<String>("정렬", sortList.map { it.name }.toTypedArray())
+class WtStatusFilter : Filter.Select<String>("상태", wtStatusList.map { it.name }.toTypedArray())
+class WtCategoryFilter : Filter.Select<String>("분류", wtCatList.map { it.name }.toTypedArray())
+class WtDayFilter : Filter.Select<String>("요일", wtDayList.map { it.name }.toTypedArray())
+class WtGenreFilter : Filter.Group<GenreTriState>("장르", wtGenreList.map { GenreTriState(it) })
+
+internal val wtStatusList = listOf(
+    FilterOption("연재중", "ing"),
+    FilterOption("완결  (※ 장르 필터만 적용됩니다)", "end"),
+)
+
+internal val wtCatList = listOf(
+    FilterOption("전체", ""),
+    FilterOption("일반웹툰", "normal"),
+    FilterOption("BL/GL", "bl"),
+    FilterOption("성인웹툰", "adult"),
+)
+
+internal val wtDayList = listOf(
+    FilterOption("전체", ""),
+    FilterOption("월", "월"),
+    FilterOption("화", "화"),
+    FilterOption("수", "수"),
+    FilterOption("목", "목"),
+    FilterOption("금", "금"),
+    FilterOption("토", "토"),
+    FilterOption("일", "일"),
+)
+
+internal val wtGenreList = listOf(
+    "순정", "판타지", "러브코미디", "드라마", "17", "학원", "라노벨", "개그", "액션", "백합", "SF",
+    "일상", "이세계", "스릴러", "애니화", "전생", "스포츠", "TS", "소년", "먹방", "붕탁", "게임",
+    "호러", "시대", "로맨스", "추리", "무협", "음악", "BL",
+)
+
+fun buildWtGenreParam(genreFilter: WtGenreFilter?): String? {
+    if (genreFilter == null) return null
+    val tags = genreFilter.state
+        .filterIsInstance<GenreTriState>()
+        .mapIndexedNotNull { index, triState ->
+            when (triState.state) {
+                Filter.TriState.STATE_INCLUDE -> index.toString()
+                Filter.TriState.STATE_EXCLUDE -> "-$index"
+                else -> null
+            }
+        }
+    return if (tags.isNotEmpty()) tags.joinToString(",") else null
+}
+
+// ================= 소설(Novel) 필터 (스크린샷 반영 완료) =================
+class NvSortFilter : Filter.Select<String>("정렬", sortList.map { it.name }.toTypedArray())
+class NvStatusFilter : Filter.Select<String>("상태", statusList.map { it.name }.toTypedArray())
+class NvGenreFilter : Filter.Group<GenreTriState>("장르", nvGenreList.map { GenreTriState(it) })
+
+internal val nvGenreList = listOf(
+    "판타지", "무협", "19금", "현대", "로맨스", "로맨스 판타지", "BL", "라노벨", "기타"
+)
+
+fun buildNvGenreParam(genreFilter: NvGenreFilter?): String? {
+    if (genreFilter == null) return null
+    val genres = genreFilter.state
+        .filterIsInstance<GenreTriState>()
+        .mapIndexedNotNull { index, triState ->
+            when (triState.state) {
+                Filter.TriState.STATE_INCLUDE -> nvGenreList[index]
+                Filter.TriState.STATE_EXCLUDE -> "-${nvGenreList[index]}"
+                else -> null
+            }
+        }
+    return if (genres.isNotEmpty()) genres.joinToString(",") else null
+}

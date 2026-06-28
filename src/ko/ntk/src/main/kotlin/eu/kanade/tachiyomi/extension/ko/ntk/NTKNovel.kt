@@ -16,12 +16,15 @@ class NTKNovel : NTKBase("NTK Novel", "novel") {
 
     @Serializable
     private data class SafeWorksResponse(
-        val works: List<SafeWork> = emptyList(),
+        // 만화의 works 대신 소설 전용인 novels 상자로 받습니다!
+        val novels: List<SafeWork> = emptyList(), 
         val hasMore: Boolean = false,
     )
 
     @Serializable
     private data class SafeWork(
+        // 소설 서버는 번호를 id라고 부릅니다!
+        val id: String? = null, 
         val sourceWorkId: String? = null,
         val title: String? = null,
         val workTitle: String? = null,
@@ -40,7 +43,6 @@ class NTKNovel : NTKBase("NTK Novel", "novel") {
 
     override fun popularMangaRequest(page: Int): Request {
         val url = "$rootUrl/api/novel-list".toHttpUrl().newBuilder().apply {
-            // 에러의 주범인 "ongoing(연재중)" 강제 요청을 완전히 제거했습니다.
             addQueryParameter("sort", "views")
             addQueryParameter("page", page.toString())
             addQueryParameter("pageSize", PAGE_SIZE.toString())
@@ -69,7 +71,6 @@ class NTKNovel : NTKBase("NTK Novel", "novel") {
         val genreParam = buildNvGenreParam(genreFilter)
 
         val url = "$rootUrl/api/novel-list".toHttpUrl().newBuilder().apply {
-            // 사용자가 '완결'을 명시적으로 눌렀을 때만 요청하여 서버 에러를 방지합니다.
             if (statusParam == "-end") addQueryParameter("status", "end")
             if (sortParam != "new") addQueryParameter("sort", sortParam)
             genreParam?.let { addQueryParameter("g", it) }
@@ -84,23 +85,20 @@ class NTKNovel : NTKBase("NTK Novel", "novel") {
         val bodyString = response.body.string()
         return try {
             val data = safeJson.decodeFromString<SafeWorksResponse>(bodyString)
-            // 정상 응답을 받았는데 목록이 텅 비어있고 에러를 뿜었다면 아래 catch로 넘깁니다.
-            if (data.works.isEmpty() && !bodyString.contains("\"works\"")) {
-                throw Exception("API Error")
-            }
-
-            val mangas = data.works.mapNotNull { work ->
-                val id = work.sourceWorkId ?: return@mapNotNull null
+            
+            // 이제 novels 상자 안에서 데이터를 꺼내옵니다.
+            val mangas = data.novels.mapNotNull { work ->
+                val id = work.id ?: work.sourceWorkId ?: return@mapNotNull null
                 SManga.create().apply {
                     url = "/novel/$id"
-                    title = work.workTitle ?: work.title ?: ""
+                    title = work.title ?: work.workTitle ?: ""
                     thumbnail_url = work.thumbnailUrl ?: work.coverUrl ?: work.imageUrl ?: work.thumbnail
                     genre = work.genre
+                    author = work.author
                 }
             }
             MangasPage(mangas, data.hasMore)
         } catch (e: Exception) {
-            // 앱이 튕기는 대신, 화면에 소설 제목인 척 서버의 에러 메시지를 띄워줍니다!
             val errorManga = SManga.create().apply {
                 url = "/novel/"
                 title = "❗오류 원인: " + bodyString.take(150)

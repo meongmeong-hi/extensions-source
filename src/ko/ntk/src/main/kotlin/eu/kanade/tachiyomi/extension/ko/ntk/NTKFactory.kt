@@ -6,5 +6,6 @@ class NTKFactory : SourceFactory {
     override fun createSources() = listOf(
         NTKManga(),
         NTKWebtoon(),
+        NTKNovel(),
     )
 }

@@ -4,7 +4,9 @@ import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.source.model.Filter
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
+import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
+import eu.kanade.tachiyomi.util.asJsoup
 import keiyoushi.utils.firstInstanceOrNull
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -16,14 +18,12 @@ class NTKNovel : NTKBase("NTK Novel", "novel") {
 
     @Serializable
     private data class SafeWorksResponse(
-        // 만화의 works 대신 소설 전용인 novels 상자로 받습니다!
         val novels: List<SafeWork> = emptyList(),
         val hasMore: Boolean = false,
     )
 
     @Serializable
     private data class SafeWork(
-        // 소설 서버는 번호를 id라고 부릅니다!
         val id: String? = null,
         val sourceWorkId: String? = null,
         val title: String? = null,
@@ -86,7 +86,6 @@ class NTKNovel : NTKBase("NTK Novel", "novel") {
         return try {
             val data = safeJson.decodeFromString<SafeWorksResponse>(bodyString)
 
-            // 이제 novels 상자 안에서 데이터를 꺼내옵니다.
             val mangas = data.novels.mapNotNull { work ->
                 val id = work.id ?: work.sourceWorkId ?: return@mapNotNull null
                 SManga.create().apply {
@@ -114,6 +113,73 @@ class NTKNovel : NTKBase("NTK Novel", "novel") {
             return latestUpdatesParse(response)
         }
         return popularMangaParse(response)
+    }
+
+    // --- 소설 전용 게시판 탐지 기능 추가 ---
+
+    override fun mangaDetailsParse(response: Response): SManga {
+        val document = response.asJsoup()
+        return SManga.create().apply {
+            // 소설 페이지에서 내용이 발견될 때만 입력합니다. (못 찾으면 기존 정보를 보존합니다!)
+            document.selectFirst("h1, .hero-v2-title, .novel-title, .title")?.text()?.takeIf { it.isNotBlank() }?.let { title = it }
+            document.selectFirst(".hero-v2-author a, .author, .writer")?.text()?.takeIf { it.isNotBlank() }?.let { author = it }
+            document.selectFirst(".hero-v2-desc, .desc, .summary, .content")?.text()?.takeIf { it.isNotBlank() }?.let { description = it }
+            document.selectFirst(".hero-v2-thumb img, .thumb img, .cover img")?.attr("abs:src")?.takeIf { it.isNotBlank() }?.let { thumbnail_url = it }
+            
+            val statText = document.select(".pill-status, .status, .state").text()
+            if (statText.contains("연재")) status = SManga.ONGOING
+            else if (statText.contains("완결")) status = SManga.COMPLETED
+        }
+    }
+
+    override fun chapterListParse(response: Response): List<SChapter> {
+        val document = response.asJsoup()
+        val chapters = mutableListOf<SChapter>()
+
+        // 1. 소설 게시판에서 자주 쓰이는 회차 목록 디자인을 광범위하게 수집합니다.
+        val rows = document.select("li.ep-row-v2, li.list-item, div.ep-row, div.list-item, tr.list-item, li.novel-item")
+        
+        for (row in rows) {
+            val a = row.selectFirst("a[href]") ?: continue
+            val href = a.attr("href")
+            
+            // 페이지 이동 버튼이나 잡다한 링크는 제외
+            if (href.isBlank() || href.contains("?page=") || href.contains("/author/") || href.contains("/tag/")) continue
+            
+            val titleElem = row.selectFirst("strong, .title, .item-title, .ep-row-v2-title")
+            val title = (titleElem?.text() ?: a.text()).trim()
+            if (title.isBlank()) continue
+
+            chapters.add(SChapter.create().apply {
+                setUrlWithoutDomain(href)
+                name = title
+                if (row.select("i.fa-lock, img[src*=lock], .badge:contains(P)").isNotEmpty()) {
+                    scanlator = "🔒" // 잠긴 화 표시
+                }
+            })
+        }
+
+        if (chapters.isNotEmpty()) return chapters.distinctBy { it.url }.reversed()
+
+        // 2. 클래스 이름이 아예 다를 경우를 대비해, 회차 뷰어 링크 모양만 보고 무식하게 다 잡아냅니다.
+        val allLinks = document.select("a[href]")
+        for (a in allLinks) {
+            val href = a.attr("href")
+            if (href.matches(Regex(".*(/novel/viewer/\\d+|/novel/ep/\\d+|/novel/\\d+/\\d+|/novel/\\d+\\?book_def).*"))) {
+                val title = a.text().trim()
+                if (title.isNotBlank() && !title.contains("다음화") && !title.contains("이전화") && !title.contains("목록")) {
+                    chapters.add(SChapter.create().apply {
+                        setUrlWithoutDomain(href)
+                        name = title
+                    })
+                }
+            }
+        }
+
+        if (chapters.isNotEmpty()) return chapters.distinctBy { it.url }.reversed()
+
+        // 3. 위 방법으로도 안 나오면, 에러 메시지를 띄웁니다.
+        throw Exception("회차 목록이 숨겨져 있습니다. 우측 상단 WebView(지구본)를 열어서 사람 인증(캡차)을 풀어주세요.")
     }
 
     override fun getFilterList() = FilterList(

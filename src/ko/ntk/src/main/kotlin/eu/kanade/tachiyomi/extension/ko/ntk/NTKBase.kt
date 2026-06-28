@@ -120,7 +120,7 @@ abstract class NTKBase(
                 window.fetch = async function() {
                     const response = await originalFetch.apply(this, arguments);
                     let reqUrl = arguments[0] && arguments[0].url ? arguments[0].url : arguments[0];
-                    if (reqUrl && reqUrl.toString().match(/\/api\/(manhwa|webtoon)-images/)) {
+                    if (reqUrl && reqUrl.toString().match(/\/api\/(manhwa|webtoon|novel)-images/)) {
                         response.clone().text().then(text => {
                             window.TrojanTunnel.exfiltrate(text);
                         });

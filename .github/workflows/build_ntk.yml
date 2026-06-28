@@ -19,11 +19,6 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      # 빌드에 필수적이지만 유실된 공통 설정 파일을 공식 저장소에서 강제로 땡겨오는 스텝입니다.
-      - name: Fetch Missing common.gradle
-        run: |
-          curl -sL https://raw.githubusercontent.com/keiyoushi/extensions-source/main/common.gradle -o common.gradle
-
       - name: Build NTK Debug APK
         run: ./gradlew :src:ko:ntk:assembleDebug
 

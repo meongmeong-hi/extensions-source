@@ -19,7 +19,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      # 중복 저장소 에러를 제거한 가장 깔끔한 공통 설정을 만듭니다.
+      # 시스템이 요구하는 명찰(namespace)을 포함한 완벽한 뼈대를 생성합니다.
       - name: Fix Build Files and Create common.gradle
         run: |
           if [ -f src/ko/ntk/build.gradle ]; then
@@ -32,6 +32,7 @@ jobs:
           apply plugin: 'kotlinx-serialization'
 
           android {
+              namespace 'eu.kanade.tachiyomi.extension.ko.ntk'
               compileSdk 34
               defaultConfig {
                   minSdk 21
